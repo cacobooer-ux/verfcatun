@@ -1,7 +1,21 @@
-<script>
-  const url = new URL(window.location.href);
-  const hash = url.hash || url.search;
-  document.body.innerHTML =
-    "<h2>Account verified ✔</h2><br>" +
-    "You can return to the app now";
-</script>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Verified</title>
+</head>
+<body style="font-family:sans-serif;text-align:center;margin-top:80px">
+  <h2>✅ Account verified successfully</h2>
+  <p>You can return to the app now.</p>
+
+  <script>
+    // يظهر التوكن في الكونسول (للتأكد فقط)
+    console.log("URL:", window.location.href);
+
+    // لو تريد إغلاق الصفحة تلقائياً بعد 3 ثواني
+    setTimeout(() => {
+      window.close();
+    }, 3000);
+  </script>
+</body>
+</html>
