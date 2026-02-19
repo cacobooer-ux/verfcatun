@@ -3,47 +3,58 @@
 <head>
   <meta charset="UTF-8">
   <title>Reset Password</title>
+  <style>
+    body { font-family: sans-serif; text-align:center; margin-top:80px; }
+    input { padding:8px; margin:8px 0; width:200px; }
+    button { padding:8px 16px; cursor:pointer; }
+    p { margin-top:16px; color:green; }
+    .error { color:red; }
+  </style>
 </head>
-<body style="font-family:sans-serif;text-align:center;margin-top:80px">
+<body>
 
-<h2>Reset your password</h2>
+<h2>Reset Your Password</h2>
 
 <input id="pass" type="password" placeholder="New password" />
-<br><br>
-<button onclick="reset()">Change Password</button>
+<br>
+<button onclick="resetPassword()">Change Password</button>
 
 <p id="msg"></p>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <script>
-const SUPABASE_URL = "https://hmddrhgxwotsgwzodmmm.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtZGRyaGd4d290c2d3em9kbW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4ODY2NDQsImV4cCI6MjA4NjQ2MjY0NH0.ZrcncmdxuJOJOH6hF9MztwHksavQUnzHyNR1LJ9-eh0";
+  // 1️⃣ بيانات مشروعك
+  const SUPABASE_URL = "https://hmddrhgxwotsgwzodmmm.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtZGRyaGd4d290c2d3em9kbW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4ODY2NDQsImV4cCI6MjA4NjQ2MjY0NH0.ZrcncmdxuJOJOH6hF9MztwHksavQUnzHyNR1LJ9-eh0";
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-// يقرأ التوكن من الرابط ويعمل تسجيل دخول مؤقت
-(async () => {
-  const hash = window.location.hash;
-  if (hash.includes("access_token")) {
-    document.getElementById("msg").innerText = "You can now set a new password";
-  } else {
+  // 2️⃣ قراءة التوكن من الرابط
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get("token");
+
+  if (!token) {
     document.getElementById("msg").innerText = "Invalid or expired link";
+    document.getElementById("msg").className = "error";
   }
-})();
 
-async function reset() {
-  const password = document.getElementById("pass").value;
+  // 3️⃣ وظيفة تغيير كلمة المرور
+  async function resetPassword() {
+    const password = document.getElementById("pass").value;
+    if (!password) return alert("Please enter a new password");
 
-  const { error } = await supabase.auth.updateUser({
-    password: password
-  });
+    const { error } = await supabase.auth.updateUser({
+      password: password
+    });
 
-  if (error)
-    document.getElementById("msg").innerText = error.message;
-  else
-    document.getElementById("msg").innerText = "Password changed successfully ✔";
-}
+    if (error) {
+      document.getElementById("msg").innerText = error.message;
+      document.getElementById("msg").className = "error";
+    } else {
+      document.getElementById("msg").innerText = "Password changed successfully ✔";
+      document.getElementById("msg").className = "";
+    }
+  }
 </script>
 
 </body>
