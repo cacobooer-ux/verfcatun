@@ -126,12 +126,15 @@ jobs:
             set +e
             sudo tar --create --zstd --file "$work/system.tar.zst" \
               --absolute-names --ignore-failed-read --warning=no-file-changed \
+              --exclude=/etc/ssl/certs --exclude=/etc/ca-certificates \
+              --exclude=/etc/alternatives --exclude=/etc/ld.so.cache \
               --exclude=/home/runner/.cache --exclude=/home/runner/.git \
               --exclude=/home/runner/work --exclude=/home/runner/_work \
-              --exclude=/opt/hostedtoolcache --exclude=/opt/ghc \
-              --exclude=/usr/local/lib/android --exclude=/usr/share/dotnet \
-              --exclude=/usr/local/share/boost \
-              /etc /home/runner /usr/local/bin /usr/local/sbin \
+              --exclude=/home/runner/.local/lib --exclude=/home/runner/.npm \
+              --exclude=/home/runner/.rustup --exclude=/home/runner/.cargo \
+              /etc/ssh /etc/systemd/system /etc/apt/sources.list.d \
+              /etc/environment /home/runner/.config /home/runner/.ssh \
+              /home/runner/.local/bin /usr/local/bin /usr/local/sbin \
               /srv /var/spool/cron/crontabs
             tar_status=$?
             set -e
@@ -149,6 +152,7 @@ jobs:
               -pass env:REVBS_BACKUP_KEY -in "$work/system.tar.zst" \
               -out "$work/linux-backup.img"
             size="$(stat -c '%s' "$work/linux-backup.img")"
+            echo "[ReVBS] Encrypted image size: ${size} bytes"
             if (( size > 90000000 )); then
               echo "ReVBS linux-backup.img is ${size} bytes; refusing upload above 90 MB."
               rm -rf "$work"
@@ -174,9 +178,9 @@ jobs:
             rm -rf "$work"
             echo "ReVBS backup updated: ${size} bytes"
           }
-          backup_once || echo 'Initial ReVBS backup failed; retrying in 10 minutes.'
+          backup_once || echo 'Initial ReVBS backup failed; retrying in 5 minutes.'
           while true; do
             echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] SSH runner alive at $TAILSCALE_IP"
             sleep 300
-            backup_once || echo 'ReVBS backup attempt failed; the SSH runner will continue.'
+            backup_once || echo 'ReVBS backup attempt failed; retrying in 5 minutes.'
           done
