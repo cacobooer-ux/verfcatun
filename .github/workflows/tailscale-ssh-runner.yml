@@ -16,6 +16,21 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y openssh-server curl git zstd openssl
+      - name: Checkout selected repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ github.token }}
+      - name: Initialize backup folder
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          touch backup/.gitkeep
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backup/.gitkeep
+          git commit -m "Initialize ReVBS backup folder" || echo "Backup folder already exists"
+          git push || echo "Backup folder push was already applied"
       - name: Restore latest ReVBS system snapshot
         env:
           GH_TOKEN: ${{ github.token }}
@@ -24,12 +39,18 @@ jobs:
           set -euo pipefail
           BACKUP_DIR="$(mktemp -d)"
           if git clone --depth 1 --branch "${GITHUB_REF_NAME:-main}" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BACKUP_DIR/repo" 2>/dev/null; then
-            if [[ -s "$BACKUP_DIR/repo/backups/system-latest.tar.zst.enc" ]]; then
-              echo 'Restoring latest ReVBS snapshot...'
+            if [[ -s "$BACKUP_DIR/repo/backup/linux-backup.img" ]]; then
+              echo 'Restoring encrypted ReVBS linux-backup.img...'
               printf '%s' "$REVBS_BACKUP_KEY" | sudo tee "$BACKUP_DIR/key" >/dev/null
               sudo chmod 600 "$BACKUP_DIR/key"
-              sudo sh -c "openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass file='$BACKUP_DIR/key' -in '$BACKUP_DIR/repo/backups/system-latest.tar.zst.enc' | zstd -d | tar --extract --absolute-names --preserve-permissions --same-owner -C /"
-              echo 'ReVBS snapshot restored.'
+              sudo sh -c "openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass file='$BACKUP_DIR/key' -in '$BACKUP_DIR/repo/backup/linux-backup.img' | zstd -d | tar --extract --absolute-names --preserve-permissions --same-owner -C /"
+              if [[ -s "$BACKUP_DIR/repo/backup/packages.txt" ]]; then
+                echo 'Restoring package selections from packages.txt...'
+                sudo dpkg --set-selections < "$BACKUP_DIR/repo/backup/packages.txt" || true
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq || true
+                sudo DEBIAN_FRONTEND=noninteractive apt-get dselect-upgrade -y || true
+              fi
+              echo 'ReVBS linux-backup.img restored.'
             else
               echo 'No ReVBS snapshot found; starting from a clean runner.'
             fi
@@ -99,37 +120,63 @@ jobs:
           set -euo pipefail
           backup_once() {
             work="$(mktemp -d)"
+            echo "[ReVBS] Creating whitelist image..."
+            sudo dpkg --get-selections > "$work/packages.txt"
+            sudo apt-get clean || true
+            set +e
             sudo tar --create --zstd --file "$work/system.tar.zst" \
               --absolute-names --ignore-failed-read --warning=no-file-changed \
-              --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run \
-              --exclude=/tmp --exclude=/var/tmp --exclude=/var/cache/apt \
-              --exclude=/var/lib/apt/lists --exclude=/home/runner/.cache \
-              --exclude=/home/runner/.git --exclude=/home/runner/work \
-              --exclude=/home/runner/_work --exclude=/tmp/* /
-            openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
-              -pass env:REVBS_BACKUP_KEY -in "$work/system.tar.zst" \
-              -out "$work/system-latest.tar.zst.enc"
-            size="$(stat -c '%s' "$work/system-latest.tar.zst.enc")"
-            if (( size > 70000000 )); then
-              echo "ReVBS backup is ${size} bytes; refusing upload above 70 MB."
+              --exclude=/home/runner/.cache --exclude=/home/runner/.git \
+              --exclude=/home/runner/work --exclude=/home/runner/_work \
+              --exclude=/opt/hostedtoolcache --exclude=/opt/ghc \
+              --exclude=/usr/local/lib/android --exclude=/usr/share/dotnet \
+              --exclude=/usr/local/share/boost \
+              /etc /home/runner /usr/local/bin /usr/local/sbin \
+              /srv /var/spool/cron/crontabs
+            tar_status=$?
+            set -e
+            if (( tar_status > 1 )); then
+              echo "[ReVBS] tar failed with exit code $tar_status"
               rm -rf "$work"
               return 1
             fi
-            git clone -q --depth 1 --branch "${GITHUB_REF_NAME:-main}" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$work/repo"
-            mkdir -p "$work/repo/backups"
-            cp "$work/system-latest.tar.zst.enc" "$work/repo/backups/system-latest.tar.zst.enc"
-            printf '{\"run_id\":\"%s\",\"created_at\":\"%s\",\"bytes\":%s,\"format\":\"tar.zst.enc\",\"scope\":\"practical-system\"}\n' \
-              "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$size" > "$work/repo/backups/checkpoint.json"
-            cd "$work/repo"
-            git add backups
-            git commit -qm "ReVBS snapshot ${GITHUB_RUN_ID}"
-            git push -q origin "HEAD:${GITHUB_REF_NAME:-main}"
+            if (( tar_status == 1 )); then
+              echo '[ReVBS] tar completed with changing-file warnings; continuing.'
+            fi
+            [[ -s "$work/system.tar.zst" ]] || { echo '[ReVBS] archive was not created'; rm -rf "$work"; return 1; }
+            echo '[ReVBS] Encrypting linux-backup.img...'
+            openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
+              -pass env:REVBS_BACKUP_KEY -in "$work/system.tar.zst" \
+              -out "$work/linux-backup.img"
+            size="$(stat -c '%s' "$work/linux-backup.img")"
+            if (( size > 90000000 )); then
+              echo "ReVBS linux-backup.img is ${size} bytes; refusing upload above 90 MB."
+              rm -rf "$work"
+              return 1
+            fi
+            echo "[ReVBS] Writing backup files to $GITHUB_WORKSPACE/backup..."
+            mkdir -p "$GITHUB_WORKSPACE/backup"
+            cp "$work/linux-backup.img" "$GITHUB_WORKSPACE/backup/linux-backup.img"
+            cp "$work/packages.txt" "$GITHUB_WORKSPACE/backup/packages.txt"
+            printf '{\"run_id\":\"%s\",\"created_at\":\"%s\",\"bytes\":%s,\"format\":\"encrypted-tar-zst-linux-image\",\"scope\":\"practical-system\"}\n' \
+              "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$size" > "$GITHUB_WORKSPACE/backup/checkpoint.json"
+            cd "$GITHUB_WORKSPACE"
+            git add backup
+            if git diff --cached --quiet; then
+              echo '[ReVBS] No backup changes to commit.'
+            else
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git commit -m "ReVBS snapshot ${GITHUB_RUN_ID}"
+              echo "[ReVBS] Uploading backup to ${GITHUB_REF_NAME:-main}..."
+              git push origin "HEAD:${GITHUB_REF_NAME:-main}" || { echo '[ReVBS] git push failed; check Contents: write and branch protection.'; rm -rf "$work"; return 1; }
+            fi
             rm -rf "$work"
             echo "ReVBS backup updated: ${size} bytes"
           }
           backup_once || echo 'Initial ReVBS backup failed; retrying in 10 minutes.'
           while true; do
             echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] SSH runner alive at $TAILSCALE_IP"
-            sleep 600
+            sleep 300
             backup_once || echo 'ReVBS backup attempt failed; the SSH runner will continue.'
           done
