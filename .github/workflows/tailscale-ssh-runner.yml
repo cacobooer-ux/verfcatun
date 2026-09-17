@@ -56,11 +56,16 @@ jobs:
             fi
           else
             echo "No backup found on ${GITHUB_REF_NAME:-main}; starting from a clean runner."
-          fi
-          rm -rf "$BACKUP_DIR"
-      - name: Configure OpenSSH
-        env:
-          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+	          fi
+	          rm -rf "$BACKUP_DIR"
+	      - name: Install OpenCode
+	        run: |
+	          set -euo pipefail
+	          npm install --global opencode-ai
+	          opencode --version
+	      - name: Configure OpenSSH
+	        env:
+	          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           set -euo pipefail
