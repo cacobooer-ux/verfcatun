@@ -61,8 +61,8 @@ jobs:
 	      - name: Install OpenCode
 	        run: |
 	          set -euo pipefail
-	          npm install --global opencode-ai
-	          opencode --version
+          npm i -g opencode-ai
+          opencode --version
 	      - name: Configure OpenSSH
 	        env:
 	          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
