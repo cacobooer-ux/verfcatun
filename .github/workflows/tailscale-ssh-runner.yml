@@ -70,10 +70,12 @@ jobs:
           sudo dpkg -i /tmp/cloudflared.deb
           cloudflared --version
       - name: Start OpenCode web tunnel
-        env:
-          OPENCODE_SERVER_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           set -euo pipefail
+          OPENCODE_PASSWORD="$(openssl rand -hex 24)"
+          export OPENCODE_PASSWORD
+          export OPENCODE_SERVER_PASSWORD="$OPENCODE_PASSWORD"
+          echo "OPENCODE_PASSWORD=$OPENCODE_PASSWORD" >> "$GITHUB_ENV"
           nohup opencode web --hostname 0.0.0.0 --port 4096 >/tmp/opencode-web.log 2>&1 &
           echo $! >/tmp/opencode-web.pid
           for _ in {1..30}; do
@@ -93,7 +95,7 @@ jobs:
           echo "========================================"
           echo "OPENCODE_URL=$OPENCODE_URL"
           echo "OpenCode username: opencode"
-          echo "OpenCode password: the SSH_PASSWORD configured during setup"
+          echo "OPENCODE_PASSWORD=$OPENCODE_PASSWORD"
           echo "========================================"
       - name: Configure OpenSSH
         env:
@@ -132,7 +134,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_URL=$OPENCODE_URL\nSTATUS=ready\n"
+          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_URL=$OPENCODE_URL\nOPENCODE_PASSWORD=$OPENCODE_PASSWORD\nSTATUS=ready\n"
           CONTENT="$(printf '%b' "$STATUS" | base64 -w 0)"
           curl -fsSL -X PUT \
             -H "Authorization: Bearer $GH_TOKEN" \
