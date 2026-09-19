@@ -32,14 +32,26 @@ jobs:
           set -euo pipefail
           [[ -n "${SUPABASE_URL:-}" && -n "${SUPABASE_SERVICE_ROLE_KEY:-}" && -n "${SUPABASE_BUCKET:-}" && -n "${SUPABASE_BACKUP_PATH:-}" && -n "${SUPABASE_BACKUP_ENCRYPTION_KEY:-}" ]] || { echo 'Supabase backup is not configured; starting clean.'; exit 0; }
           archive=/tmp/runner-home.tar.zst.enc
-          object_url="${SUPABASE_URL%/}/storage/v1/object/${SUPABASE_BUCKET}/${SUPABASE_BACKUP_PATH}"
-          http_code="$(curl -sS -o "$archive" -w '%{http_code}' --retry 3 -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$object_url" || true)"
+          bucket="${SUPABASE_BUCKET#/}"
+          backup_path="${SUPABASE_BACKUP_PATH#/}"
+          object_url="${SUPABASE_URL%/}/storage/v1/object/${bucket}/${backup_path}"
+          response_file=/tmp/supabase-download-response
+          http_code="$(curl -sS -o "$response_file" -w '%{http_code}' --retry 3 -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$object_url" || true)"
           if [[ "$http_code" == 404 ]]; then
             echo 'No backup found in Supabase; starting with a clean runner.'
-            rm -f "$archive"
+            rm -f "$archive" "$response_file"
             exit 0
           fi
-          [[ "$http_code" == 2* && -s "$archive" ]] || { echo "Supabase backup download failed with HTTP $http_code"; rm -f "$archive"; exit 1; }
+          if [[ "$http_code" != 2* ]]; then
+            echo "Supabase backup download failed with HTTP $http_code"
+            echo 'Supabase response:'
+            head -c 1000 "$response_file" || true
+            echo
+            rm -f "$archive" "$response_file"
+            exit 1
+          fi
+          mv "$response_file" "$archive"
+          [[ -s "$archive" ]] || { echo 'Supabase returned an empty backup object.'; rm -f "$archive"; exit 1; }
           echo 'Supabase backup found; restoring /home/runner...'
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass env:SUPABASE_BACKUP_ENCRYPTION_KEY -in "$archive" | zstd -d | sudo tar --extract --directory=/home/runner --no-same-owner --warning=no-file-changed
           sudo chown -R runner:runner /home/runner/.config /home/runner/.local /home/runner/.ssh 2>/dev/null || true
@@ -210,7 +222,9 @@ jobs:
             if (( tar_status > 1 )); then echo "Backup tar failed with exit code $tar_status"; rm -rf "$work"; return 1; fi
             openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt -pass env:SUPABASE_BACKUP_ENCRYPTION_KEY -in "$work/runner-home.tar.zst" -out "$archive"
             size="$(stat -c '%s' "$archive")"
-            object_url="${SUPABASE_URL%/}/storage/v1/object/${SUPABASE_BUCKET}/${SUPABASE_BACKUP_PATH}"
+            bucket="${SUPABASE_BUCKET#/}"
+            backup_path="${SUPABASE_BACKUP_PATH#/}"
+            object_url="${SUPABASE_URL%/}/storage/v1/object/${bucket}/${backup_path}"
             http_code="$(curl -sS -o /tmp/supabase-upload-response -w '%{http_code}' --retry 3 -X POST -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H 'x-upsert: true' -H 'Content-Type: application/octet-stream' --data-binary @"$archive" "$object_url" || true)"
             rm -rf "$work"
             [[ "$http_code" == 2* ]] || { echo "Supabase backup upload failed with HTTP $http_code"; cat /tmp/supabase-upload-response 2>/dev/null || true; return 1; }
