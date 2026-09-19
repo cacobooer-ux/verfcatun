@@ -73,10 +73,9 @@ jobs:
         run: |
           set -euo pipefail
           OPENCODE_PASSWORD="$(openssl rand -hex 24)"
-          export OPENCODE_PASSWORD
-          export OPENCODE_SERVER_PASSWORD="$OPENCODE_PASSWORD"
-          echo "OPENCODE_PASSWORD=$OPENCODE_PASSWORD" >> "$GITHUB_ENV"
-          nohup opencode web --hostname 0.0.0.0 --port 4096 >/tmp/opencode-web.log 2>&1 &
+          printf '%s' "$OPENCODE_PASSWORD" > /tmp/opencode-password
+          chmod 600 /tmp/opencode-password
+          OPENCODE_SERVER_PASSWORD="$OPENCODE_PASSWORD" nohup opencode web --hostname 0.0.0.0 --port 4096 >/tmp/opencode-web.log 2>&1 &
           echo $! >/tmp/opencode-web.pid
           for _ in {1..30}; do
             if curl -fsS -u "opencode:$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/ >/dev/null 2>&1; then break; fi
@@ -95,7 +94,6 @@ jobs:
           echo "========================================"
           echo "OPENCODE_URL=$OPENCODE_URL"
           echo "OpenCode username: opencode"
-          echo "OPENCODE_PASSWORD=$OPENCODE_PASSWORD"
           echo "========================================"
       - name: Configure OpenSSH
         env:
@@ -126,18 +124,6 @@ jobs:
           echo "TAILSCALE_IP=$IP" >> "$GITHUB_ENV"
           echo "SSH_COMMAND=ssh runner@$IP" >> "$GITHUB_ENV"
           echo "OPENCODE_TAILSCALE_URL=http://$IP:4096" >> "$GITHUB_ENV"
-          OPENCODE_FUNNEL_URL=""
-          if sudo tailscale funnel --yes --bg --https=8443 http://127.0.0.1:4096 >/tmp/tailscale-funnel.log 2>&1; then
-            FQDN="$(tailscale dnsname 2>/dev/null | tr -d '\n' | sed 's/\.$//' || true)"
-            if [[ "$FQDN" == *.ts.net ]]; then
-              OPENCODE_FUNNEL_URL="https://$FQDN:8443"
-              echo "OPENCODE_FUNNEL_URL=$OPENCODE_FUNNEL_URL" >> "$GITHUB_ENV"
-              echo "OPENCODE_FUNNEL_URL=$OPENCODE_FUNNEL_URL"
-            fi
-          else
-            echo 'Tailscale Funnel is not enabled for this tailnet; continuing with private Tailscale access.'
-            sed -n '1,12p' /tmp/tailscale-funnel.log || true
-          fi
           echo "========================================"
           echo "TAILSCALE_IP=$IP"
           echo "SSH_COMMAND=ssh runner@$IP"
@@ -148,7 +134,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_TAILSCALE_URL=$OPENCODE_TAILSCALE_URL\nOPENCODE_FUNNEL_URL=${OPENCODE_FUNNEL_URL:-}\nOPENCODE_URL=$OPENCODE_URL\nOPENCODE_PASSWORD=$OPENCODE_PASSWORD\nSTATUS=ready\n"
+          OPENCODE_PASSWORD_ENC="$(openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:"$REVBS_BACKUP_KEY" -in /tmp/opencode-password | base64 -w 0)"
+          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_TAILSCALE_URL=$OPENCODE_TAILSCALE_URL\nOPENCODE_URL=$OPENCODE_URL\nOPENCODE_PASSWORD_ENC=$OPENCODE_PASSWORD_ENC\nSTATUS=ready\n"
           CONTENT="$(printf '%b' "$STATUS" | base64 -w 0)"
           curl -fsSL -X PUT \
             -H "Authorization: Bearer $GH_TOKEN" \
