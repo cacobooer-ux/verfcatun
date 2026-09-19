@@ -63,6 +63,38 @@ jobs:
           set -euo pipefail
           npm i -g opencode-ai
           opencode --version
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+          cloudflared --version
+      - name: Start OpenCode web tunnel
+        env:
+          OPENCODE_SERVER_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          nohup opencode web --hostname 0.0.0.0 --port 4096 >/tmp/opencode-web.log 2>&1 &
+          echo $! >/tmp/opencode-web.pid
+          for _ in {1..30}; do
+            if curl -fsS -u "opencode:$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/ >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS -u "opencode:$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/ >/dev/null
+          nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:4096 >/tmp/cloudflared.log 2>&1 &
+          echo $! >/tmp/cloudflared.pid
+          for _ in {1..30}; do
+            OPENCODE_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n1 || true)"
+            [[ -n "$OPENCODE_URL" ]] && break
+            sleep 2
+          done
+          [[ -n "${OPENCODE_URL:-}" ]] || { cat /tmp/cloudflared.log; exit 1; }
+          echo "OPENCODE_URL=$OPENCODE_URL" >> "$GITHUB_ENV"
+          echo "========================================"
+          echo "OPENCODE_URL=$OPENCODE_URL"
+          echo "OpenCode username: opencode"
+          echo "OpenCode password: the SSH_PASSWORD configured during setup"
+          echo "========================================"
       - name: Configure OpenSSH
         env:
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
@@ -100,7 +132,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nSTATUS=ready\n"
+          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_URL=$OPENCODE_URL\nSTATUS=ready\n"
           CONTENT="$(printf '%b' "$STATUS" | base64 -w 0)"
           curl -fsSL -X PUT \
             -H "Authorization: Bearer $GH_TOKEN" \
