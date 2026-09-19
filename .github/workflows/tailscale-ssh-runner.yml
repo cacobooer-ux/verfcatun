@@ -37,7 +37,7 @@ jobs:
           object_url="${SUPABASE_URL%/}/storage/v1/object/${bucket}/${backup_path}"
           response_file=/tmp/supabase-download-response
           http_code="$(curl -sS -o "$response_file" -w '%{http_code}' --retry 3 -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$object_url" || true)"
-          if [[ "$http_code" == 404 ]]; then
+          if [[ "$http_code" == 404 || ( "$http_code" == 400 && ( "$(grep -c 'NoSuchKey\|\\"statusCode\\":\\"404\\"' "$response_file" 2>/dev/null || true)" -gt 0 ) ) ]]; then
             echo 'No backup found in Supabase; starting with a clean runner.'
             rm -f "$archive" "$response_file"
             exit 0
