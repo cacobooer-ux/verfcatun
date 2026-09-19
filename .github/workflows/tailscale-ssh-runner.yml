@@ -63,6 +63,35 @@ jobs:
           set -euo pipefail
           npm i -g opencode-ai
           opencode --version
+      - name: Install ntfy notification skill
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/opencode/skills/ntfy-notifications"
+          cat > "$HOME/.config/opencode/skills/ntfy-notifications/SKILL.md" <<'SKILL'
+          ---
+          name: ntfy-notifications
+          description: Send a completion notification through ntfy when the user explicitly asks to be notified after finishing work.
+          ---
+
+          # ntfy completion notifications
+
+          Use this skill only when the user explicitly requests a completion notification, including wording such as "notify me when you finish", "notify me when you're done", "send me a notification when finished", or equivalent wording.
+
+          The ntfy topic URL is provided in the `NTFY_URL` environment variable. Never reveal, print, commit, or include this URL in normal responses, logs, code, or status output.
+
+          When the requested work is genuinely complete, send one concise notification with:
+
+          ```bash
+          curl --fail --silent --show-error --max-time 20 \\
+            -H 'Title: OpenCode task finished' \\
+            -H 'Tags: white_check_mark' \\
+            --data-raw 'OpenCode finished the requested task.' \\
+            "$NTFY_URL"
+          ```
+
+          If `NTFY_URL` is empty, do not attempt a request and tell the user that ntfy is not configured. Do not send notifications for ordinary tasks unless the user asked for one. Do not claim that a notification was sent unless the curl command succeeds.
+          SKILL
+          chmod 600 "$HOME/.config/opencode/skills/ntfy-notifications/SKILL.md"
       - name: Install cloudflared
         run: |
           set -euo pipefail
@@ -70,6 +99,8 @@ jobs:
           sudo dpkg -i /tmp/cloudflared.deb
           cloudflared --version
       - name: Start OpenCode web tunnel
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
         run: |
           set -euo pipefail
           OPENCODE_PASSWORD="$(openssl rand -hex 24)"
