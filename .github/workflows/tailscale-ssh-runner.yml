@@ -108,7 +108,7 @@ jobs:
           export OPENCODE_SERVER_PASSWORD
           printf '%s' "$OPENCODE_PASSWORD" > /tmp/opencode-password
           chmod 600 /tmp/opencode-password
-          nohup opencode web --hostname 0.0.0.0 --port 4096 >/tmp/opencode-web.log 2>&1 &
+          nohup opencode web --auto --hostname 0.0.0.0 --port 4096 >/tmp/opencode-web.log 2>&1 &
           echo $! >/tmp/opencode-web.pid
           for _ in {1..30}; do
             if curl -fsS -u "opencode:$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/ >/dev/null 2>&1; then break; fi
