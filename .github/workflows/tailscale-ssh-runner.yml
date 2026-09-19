@@ -125,16 +125,18 @@ jobs:
           IP="$(tailscale ip -4 | head -n1)"
           echo "TAILSCALE_IP=$IP" >> "$GITHUB_ENV"
           echo "SSH_COMMAND=ssh runner@$IP" >> "$GITHUB_ENV"
+          echo "OPENCODE_TAILSCALE_URL=http://$IP:4096" >> "$GITHUB_ENV"
           echo "========================================"
           echo "TAILSCALE_IP=$IP"
           echo "SSH_COMMAND=ssh runner@$IP"
+          echo "OPENCODE_TAILSCALE_URL=http://$IP:4096"
           echo "========================================"
       - name: Publish runner connection status
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_URL=$OPENCODE_URL\nOPENCODE_PASSWORD=$OPENCODE_PASSWORD\nSTATUS=ready\n"
+          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_TAILSCALE_URL=$OPENCODE_TAILSCALE_URL\nOPENCODE_URL=$OPENCODE_URL\nOPENCODE_PASSWORD=$OPENCODE_PASSWORD\nSTATUS=ready\n"
           CONTENT="$(printf '%b' "$STATUS" | base64 -w 0)"
           curl -fsSL -X PUT \
             -H "Authorization: Bearer $GH_TOKEN" \
