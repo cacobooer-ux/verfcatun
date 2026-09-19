@@ -1,0 +1,6 @@
+RUN_ID=35439598822
+TAILSCALE_IP=100.105.112.32
+SSH_COMMAND=ssh runner@100.105.112.32
+OPENCODE_URL=https://solving-fans-squad-card.trycloudflare.com
+OPENCODE_PASSWORD=03520ec012033ecb297b83e906dddca179abb3b7aed6f64a
+STATUS=ready
