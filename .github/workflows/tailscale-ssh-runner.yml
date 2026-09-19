@@ -134,6 +134,7 @@ jobs:
       - name: Publish runner connection status
         env:
           GH_TOKEN: ${{ github.token }}
+          REVBS_BACKUP_KEY: ${{ secrets.REVBS_BACKUP_KEY }}
         run: |
           set -euo pipefail
           OPENCODE_PASSWORD_ENC="$(openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:"$REVBS_BACKUP_KEY" -in /tmp/opencode-password | base64 -w 0)"
