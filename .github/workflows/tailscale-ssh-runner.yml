@@ -81,10 +81,47 @@ jobs:
           rm -f "$encrypted" "$manifest_file"
           echo 'Supabase backup restored.'
       - name: Install OpenCode
+        id: install_opencode
         run: |
           set -euo pipefail
+          sudo chown -R runner:runner "$HOME/.npm" 2>/dev/null || true
+          mkdir -p "$HOME/.npm"
+          chmod 700 "$HOME/.npm"
           npm i -g opencode-ai
           opencode --version
+      - name: Remove current Supabase backup after OpenCode install failure
+        if: ${{ failure() && steps.install_opencode.outcome == 'failure' }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+          SUPABASE_BACKUP_PATH: ${{ secrets.SUPABASE_BACKUP_PATH }}
+        run: |
+          set -euo pipefail
+          [[ -n "${SUPABASE_URL:-}" && -n "${SUPABASE_SERVICE_ROLE_KEY:-}" && -n "${SUPABASE_BUCKET:-}" && -n "${SUPABASE_BACKUP_PATH:-}" ]] || { echo 'Supabase cleanup skipped: settings are incomplete.'; exit 0; }
+          bucket="${SUPABASE_BUCKET#/}"
+          backup_base="${SUPABASE_BACKUP_PATH#/}"
+          object_root="${SUPABASE_URL%/}/storage/v1/object"
+          manifest_path="${backup_base}.manifest.json"
+          manifest_file=/tmp/failed-opencode-backup-manifest.json
+          manifest_url="$object_root/$bucket/$manifest_path"
+          if ! curl -fsSL --retry 2 -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$manifest_url" -o "$manifest_file"; then
+            echo 'No Supabase manifest found; cleanup is not needed.'
+            exit 0
+          fi
+          python3 - "$manifest_file" "$backup_base" "$bucket" "$object_root" "$SUPABASE_SERVICE_ROLE_KEY" <<'PY'
+          import json,sys,urllib.request
+          manifest=json.load(open(sys.argv[1]))
+          base,generation,bucket,root,key=sys.argv[2],manifest['generation'],sys.argv[3],sys.argv[4],sys.argv[5]
+          paths=[f'{base}.gen-{generation}.part-{i:06d}' for i in range(int(manifest['parts']))]
+          paths.append(f'{base}.manifest.json')
+          body=json.dumps({'prefixes':paths}).encode()
+          req=urllib.request.Request(f'{root}/remove', data=body, method='POST', headers={'Authorization':f'Bearer {key}','apikey':key,'Content-Type':'application/json'})
+          with urllib.request.urlopen(req, timeout=60) as r: print(f'Supabase cleanup HTTP {r.status}')
+          PY
+          rm -f "$manifest_file"
+          echo 'Removed the current Supabase backup after OpenCode installation failure.'
       - name: Install ntfy notification skill
         run: |
           set -euo pipefail
