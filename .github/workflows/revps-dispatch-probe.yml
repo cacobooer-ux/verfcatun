@@ -1,0 +1,13 @@
+name: revps dispatch probe
+on:
+  workflow_dispatch:
+    inputs:
+      launch:
+        description: Start the runner
+        required: false
+        default: yes
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo dispatch-ok
