@@ -171,3 +171,11 @@ jobs:
           sudo systemctl --no-pager --full status ssh || true
           echo "Listening ports:"
           ss -lnt
+      - name: Keep SSH runner alive
+        run: |
+          set -euo pipefail
+          trap 'exit 0' TERM INT
+          while true; do
+            echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] SSH runner alive at $TAILSCALE_IP"
+            sleep 300
+          done
