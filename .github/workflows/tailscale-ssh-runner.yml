@@ -56,15 +56,15 @@ jobs:
           fi
           mv "$response_file" "$manifest_file"
           generation="$(python3 - "$manifest_file" <<'PY'
-import json,sys
-print(json.load(open(sys.argv[1]))['generation'])
-PY
-)"
+          import json,sys
+          print(json.load(open(sys.argv[1]))['generation'])
+          PY
+          )"
           parts="$(python3 - "$manifest_file" <<'PY'
-import json,sys
-print(json.load(open(sys.argv[1]))['parts'])
-PY
-)"
+          import json,sys
+          print(json.load(open(sys.argv[1]))['parts'])
+          PY
+          )"
           encrypted=/tmp/runner-home.tar.zst.enc
           : > "$encrypted"
           for i in $(seq 0 $((parts - 1))); do
@@ -256,11 +256,11 @@ PY
             old_generation=""
             if curl -fsSL --retry 2 -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$object_url/$manifest_path" -o "$old_manifest" 2>/dev/null; then
               old_generation="$(python3 - "$old_manifest" <<'PY'
-import json,sys
-try: print(json.load(open(sys.argv[1])).get('generation',''))
-except Exception: print('')
-PY
-)"
+          import json,sys
+          try: print(json.load(open(sys.argv[1])).get('generation',''))
+          except Exception: print('')
+          PY
+          )"
             fi
             for part in "$work"/part-*; do
               index="${part##*-}"
@@ -269,20 +269,20 @@ PY
               [[ "$http_code" == 2* ]] || { echo "Supabase backup part upload failed with HTTP $http_code"; cat /tmp/supabase-upload-response 2>/dev/null || true; rm -rf "$work"; return 1; }
             done
             python3 - "$work/manifest.json" "$generation" "$parts" "$size" <<'PY'
-import json,sys,datetime
-json.dump({'generation':sys.argv[2],'parts':int(sys.argv[3]),'bytes':int(sys.argv[4]),'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'format':'encrypted-tar-zstd-home-runner','exclude':['actions-runner','work']},open(sys.argv[1],'w'))
-PY
+          import json,sys,datetime
+          json.dump({'generation':sys.argv[2],'parts':int(sys.argv[3]),'bytes':int(sys.argv[4]),'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'format':'encrypted-tar-zstd-home-runner','exclude':['actions-runner','work']},open(sys.argv[1],'w'))
+          PY
             http_code="$(curl -sS -o /tmp/supabase-manifest-upload-response -w '%{http_code}' --retry 3 -X POST -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H 'x-upsert: true' -H 'Content-Type: application/json' --data-binary @"$work/manifest.json" "$object_url/$manifest_path" || true)"
             [[ "$http_code" == 2* ]] || { echo "Supabase backup manifest upload failed with HTTP $http_code"; cat /tmp/supabase-manifest-upload-response 2>/dev/null || true; rm -rf "$work"; return 1; }
             if [[ -n "$old_generation" && "$old_generation" != "$generation" ]]; then
               old_paths="$(python3 - "$backup_base" "$old_generation" "$parts" <<'PY'
-import json,sys
-# The manifest is not available here, so request cleanup for a conservative range.
-# The next run's manifest remains authoritative if cleanup cannot remove old parts.
-paths=[f"{sys.argv[1]}.gen-{sys.argv[2]}.part-{i:06d}" for i in range(0,1000)]
-print(json.dumps({'prefixes':paths}))
-PY
-)"
+          import json,sys
+          # The manifest is not available here, so request cleanup for a conservative range.
+          # The next run's manifest remains authoritative if cleanup cannot remove old parts.
+          paths=[f"{sys.argv[1]}.gen-{sys.argv[2]}.part-{i:06d}" for i in range(0,1000)]
+          print(json.dumps({'prefixes':paths}))
+          PY
+          )"
               curl -sS --max-time 60 -X POST -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H 'Content-Type: application/json' -d "$old_paths" "${SUPABASE_URL%/}/storage/v1/object/remove" >/dev/null || true
             fi
             rm -rf "$work"
