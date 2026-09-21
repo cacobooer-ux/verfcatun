@@ -1,0 +1,7 @@
+RUN_ID=35616760261
+TAILSCALE_IP=100.111.67.28
+SSH_COMMAND=ssh runner@100.111.67.28
+OPENCODE_TAILSCALE_URL=http://100.111.67.28:4096
+OPENCODE_URL=https://kept-thehun-scripting-equilibrium.trycloudflare.com
+OPENCODE_PASSWORD_ENC=U2FsdGVkX18I+GczcOpGuZVKda/EW5hV3ac+EOh/EppiY63VjyzEPdmh5eRFe+1/wnTdG+dX15KPfh7WBKHTQoy9AX7sy/lyJhi4/rlrnGU=
+STATUS=ready
