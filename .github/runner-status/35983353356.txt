@@ -1,0 +1,7 @@
+RUN_ID=35983353356
+TAILSCALE_IP=100.122.235.85
+SSH_COMMAND=ssh runner@100.122.235.85
+OPENCODE_TAILSCALE_URL=http://100.122.235.85:4096
+OPENCODE_URL=https://regional-effort-property-different.trycloudflare.com
+OPENCODE_PASSWORD_ENC=U2FsdGVkX1+60oekmpm1aaQuHW6RFuFkExGFwMNIibbcjdENit1tn36gf5pYMYwx86SZHff16naq7O0HgiuIR2xNxtGGDoxfjnQm/YjTl1s=
+STATUS=ready
