@@ -1,0 +1,7 @@
+RUN_ID=36150609082
+TAILSCALE_IP=100.79.81.18
+SSH_COMMAND=ssh runner@100.79.81.18
+OPENCODE_TAILSCALE_URL=http://100.79.81.18:4096
+OPENCODE_URL=https://phentermine-pontiac-sign-buses.trycloudflare.com
+OPENCODE_PASSWORD_ENC=U2FsdGVkX1+7zKoFnxVkuVcThKrpN3bHwNv6FQMYQyJjKvcXhiHVVlgi7LCZe+m1aqy9azxAXxfrl+HyHu3lXrNKjVw4XJ4sAsu/xZCF6y8=
+STATUS=ready
