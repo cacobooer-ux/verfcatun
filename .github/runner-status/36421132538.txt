@@ -1,0 +1,7 @@
+RUN_ID=36421132538
+TAILSCALE_IP=100.84.97.106
+SSH_COMMAND=ssh runner@100.84.97.106
+OPENCODE_TAILSCALE_URL=http://100.84.97.106:4096
+OPENCODE_URL=https://savings-instruction-acknowledge-tions.trycloudflare.com
+OPENCODE_PASSWORD_ENC=U2FsdGVkX19Am6j9m58Z4WUzOzLDAjG/cFc/5I1k4Xq+agbrBskv1p4Ob0DienjdlvNpd9clo7gyDeLRwzIOCm3cM6IHeJUBxq26Ly8heuw=
+STATUS=ready
