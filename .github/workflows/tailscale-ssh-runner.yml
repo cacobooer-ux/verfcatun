@@ -73,13 +73,7 @@ jobs:
             "permission": "allow"
           }
           JSON
-      - name: Install cloudflared
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
-          sudo dpkg -i /tmp/cloudflared.deb
-          cloudflared --version
-      - name: Start OpenCode web tunnel
+      - name: Start OpenCode on Tailscale
         env:
           NTFY_URL: ${{ secrets.NTFY_URL }}
         run: |
@@ -100,17 +94,8 @@ jobs:
             cat /tmp/opencode-web.log || true
             exit 1
           fi
-          nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:4096 >/tmp/cloudflared.log 2>&1 &
-          echo $! >/tmp/cloudflared.pid
-          for _ in {1..30}; do
-            OPENCODE_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n1 || true)"
-            [[ -n "$OPENCODE_URL" ]] && break
-            sleep 2
-          done
-          [[ -n "${OPENCODE_URL:-}" ]] || { cat /tmp/cloudflared.log; exit 1; }
-          echo "OPENCODE_URL=$OPENCODE_URL" >> "$GITHUB_ENV"
           echo "========================================"
-          echo "OPENCODE_URL=$OPENCODE_URL"
+          echo "OpenCode Tailscale service: http://127.0.0.1:4096"
           echo "OpenCode username: opencode"
           echo "========================================"
       - name: Configure OpenSSH
@@ -154,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           OPENCODE_PASSWORD_ENC="$(openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:"$REVBS_BACKUP_KEY" -in /tmp/opencode-password | base64 -w 0)"
-          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_TAILSCALE_URL=$OPENCODE_TAILSCALE_URL\nOPENCODE_URL=$OPENCODE_URL\nOPENCODE_PASSWORD_ENC=$OPENCODE_PASSWORD_ENC\nSTATUS=ready\n"
+          STATUS="RUN_ID=$GITHUB_RUN_ID\nTAILSCALE_IP=$TAILSCALE_IP\nSSH_COMMAND=ssh runner@$TAILSCALE_IP\nOPENCODE_TAILSCALE_URL=$OPENCODE_TAILSCALE_URL\nOPENCODE_PASSWORD_ENC=$OPENCODE_PASSWORD_ENC\nSTATUS=ready\n"
           CONTENT="$(printf '%b' "$STATUS" | base64 -w 0)"
           curl -fsSL -X PUT \
             -H "Authorization: Bearer $GH_TOKEN" \
