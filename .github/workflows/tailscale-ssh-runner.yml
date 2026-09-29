@@ -42,6 +42,30 @@ jobs:
             --non-interactive --skip-browser --skip-computer-use
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/hermes" --help >/dev/null
+      - name: Start Hermes Telegram gateway
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_USERS: ${{ secrets.TELEGRAM_ALLOWED_USERS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TELEGRAM_BOT_TOKEN" ]]; then
+            echo 'Telegram gateway not configured; skipping.'
+            exit 0
+          fi
+          [[ "$TELEGRAM_BOT_TOKEN" =~ ^[^[:space:]]+$ ]] || { echo 'Invalid Telegram bot token secret.' >&2; exit 1; }
+          [[ "$TELEGRAM_ALLOWED_USERS" =~ ^[0-9]+(,[0-9]+)*$ ]] || { echo 'Telegram allowed users must be numeric IDs separated by commas.' >&2; exit 1; }
+          install -d -m 700 "$HOME/.hermes"
+          umask 077
+          printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_ALLOWED_USERS=%s\n' \
+            "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_ALLOWED_USERS" > "$HOME/.hermes/.env"
+          nohup hermes gateway > "$HOME/.hermes/gateway.log" 2>&1 &
+          echo $! > "$HOME/.hermes/gateway.pid"
+          sleep 3
+          if ! kill -0 "$(cat "$HOME/.hermes/gateway.pid")" 2>/dev/null; then
+            echo 'Hermes Telegram gateway did not stay running; configure Hermes with hermes setup over SSH.' >&2
+          else
+            echo 'Hermes Telegram gateway started.'
+          fi
       - name: Install ntfy notification skill
         run: |
           set -euo pipefail
