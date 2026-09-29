@@ -46,6 +46,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALLOWED_USERS: ${{ secrets.TELEGRAM_ALLOWED_USERS }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           set -euo pipefail
           if [[ -z "$TELEGRAM_BOT_TOKEN" ]]; then
@@ -56,8 +57,11 @@ jobs:
           [[ "$TELEGRAM_ALLOWED_USERS" =~ ^[0-9]+(,[0-9]+)*$ ]] || { echo 'Telegram allowed users must be numeric IDs separated by commas.' >&2; exit 1; }
           install -d -m 700 "$HOME/.hermes"
           umask 077
-          printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_ALLOWED_USERS=%s\n' \
-            "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_ALLOWED_USERS" > "$HOME/.hermes/.env"
+          {
+            printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_ALLOWED_USERS=%s\n' \
+              "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_ALLOWED_USERS"
+            [[ -n "$OPENROUTER_API_KEY" ]] && printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY"
+          } > "$HOME/.hermes/.env"
           nohup hermes gateway > "$HOME/.hermes/gateway.log" 2>&1 &
           echo $! > "$HOME/.hermes/gateway.pid"
           sleep 3
@@ -66,6 +70,30 @@ jobs:
           else
             echo 'Hermes Telegram gateway started.'
           fi
+      - name: Install Hermes provider skills
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.hermes/skills/openrouter" "$HOME/.hermes/skills/hermes-cloud"
+          cat > "$HOME/.hermes/skills/openrouter/SKILL.md" <<'SKILL'
+          ---
+          name: openrouter
+          description: Select and use OpenRouter from Telegram when the runner has an OPENROUTER_API_KEY configured.
+          ---
+          # OpenRouter provider
+          When the user invokes `/openrouter`, explain that the OpenRouter API key is already configured from the encrypted runner secret when available. Do not reveal or print the key. Tell the user to send `/model` to open Hermes' model picker, or send `/model openrouter:<provider/model>` to choose a known OpenRouter model. If the provider is not configured or a model switch fails, tell the user to reconnect the runner or use SSH to run `hermes model`.
+          Never echo, inspect, or expose `OPENROUTER_API_KEY`.
+          SKILL
+          cat > "$HOME/.hermes/skills/hermes-cloud/SKILL.md" <<'SKILL'
+          ---
+          name: hermes-cloud
+          description: Explain how to deploy the persistent Hermes Cloud agent without mixing it with the temporary revps gateway.
+          ---
+          # Hermes Cloud
+          When the user invokes `/hermes-cloud` or asks for the persistent Hermes Cloud agent, send this official link: https://portal.nousresearch.com/cloud
+          Explain that Hermes Cloud is a separate always-on agent with persistent memory and its own Telegram integration. The user must deploy or approve it in the browser and configure a separate Telegram bot for Cloud; never claim that this temporary revps runner has been migrated to Cloud. Do not request payment details or handle billing. After Cloud is deployed, advise the user to use the Cloud bot separately so two gateways never consume updates from the same Telegram bot.
+          SKILL
+          chmod 600 "$HOME/.hermes/skills/openrouter/SKILL.md" "$HOME/.hermes/skills/hermes-cloud/SKILL.md"
+          [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && hermes gateway restart 2>/dev/null || true
       - name: Install ntfy notification skill
         run: |
           set -euo pipefail
