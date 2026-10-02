@@ -1,12 +1,6 @@
 name: Ubuntu Tailscale SSH Runner
 
-on:
-  workflow_dispatch:
-    inputs:
-      launch:
-        description: 'Start the runner'
-        required: false
-        default: 'yes'
+on: workflow_dispatch
 
 permissions:
   contents: write
