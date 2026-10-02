@@ -47,6 +47,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALLOWED_USERS: ${{ secrets.TELEGRAM_ALLOWED_USERS }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         run: |
           set -euo pipefail
           if [[ -z "$TELEGRAM_BOT_TOKEN" ]]; then
@@ -61,6 +62,7 @@ jobs:
             printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_ALLOWED_USERS=%s\n' \
               "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_ALLOWED_USERS"
             [[ -n "$OPENROUTER_API_KEY" ]] && printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY"
+            [[ -n "$AI_GATEWAY_API_KEY" ]] && printf 'AI_GATEWAY_API_KEY=%s\n' "$AI_GATEWAY_API_KEY"
           } > "$HOME/.hermes/.env"
           nohup hermes gateway > "$HOME/.hermes/gateway.log" 2>&1 &
           echo $! > "$HOME/.hermes/gateway.pid"
@@ -73,7 +75,7 @@ jobs:
       - name: Install Hermes provider skills
         run: |
           set -euo pipefail
-          install -d -m 700 "$HOME/.hermes/skills/openrouter" "$HOME/.hermes/skills/hermes-cloud"
+          install -d -m 700 "$HOME/.hermes/skills/openrouter" "$HOME/.hermes/skills/vercel" "$HOME/.hermes/skills/vercel-ai-gateway" "$HOME/.hermes/skills/hermes-cloud"
           cat > "$HOME/.hermes/skills/openrouter/SKILL.md" <<'SKILL'
           ---
           name: openrouter
@@ -83,6 +85,19 @@ jobs:
           When the user invokes `/openrouter`, explain that the OpenRouter API key is already configured from the encrypted runner secret when available. Do not reveal or print the key. Tell the user to send `/model` to open Hermes' model picker, or send `/model openrouter:<provider/model>` to choose a known OpenRouter model. If the provider is not configured or a model switch fails, tell the user to reconnect the runner or use SSH to run `hermes model`.
           Never echo, inspect, or expose `OPENROUTER_API_KEY`.
           SKILL
+          cat > "$HOME/.hermes/skills/vercel-ai-gateway/SKILL.md" <<'SKILL'
+          ---
+          name: vercel-ai-gateway
+          description: Select and use Vercel AI Gateway from Telegram when an AI_GATEWAY_API_KEY is configured.
+          ---
+          # Vercel AI Gateway provider
+          When the user invokes `/vercel-ai-gateway` or `/vercel`, explain that the Vercel AI Gateway API key is configured from the encrypted runner secret when available. Never reveal, print, inspect, or echo `AI_GATEWAY_API_KEY`.
+
+          Tell the user to send `/model` to open Hermes' live model picker and choose **Vercel AI Gateway**, or send `/model custom:vercel-ai-gateway:<creator/model>` to select a known model directly. Hermes also accepts `/model ai-gateway:<creator/model>`; model IDs use Vercel's `creator/model` format. Never invent model availability; direct the user to `/model` for the live catalog.
+
+          If the provider is not configured or a model switch fails, tell the user to reconnect the runner so the latest encrypted secret is injected, or use SSH to run `hermes model`.
+          SKILL
+          cp "$HOME/.hermes/skills/vercel-ai-gateway/SKILL.md" "$HOME/.hermes/skills/vercel/SKILL.md"
           cat > "$HOME/.hermes/skills/hermes-cloud/SKILL.md" <<'SKILL'
           ---
           name: hermes-cloud
@@ -92,7 +107,7 @@ jobs:
           When the user invokes `/hermes-cloud` or asks for the persistent Hermes Cloud agent, send this official link: https://portal.nousresearch.com/cloud
           Explain that Hermes Cloud is a separate always-on agent with persistent memory and its own Telegram integration. The user must deploy or approve it in the browser and configure a separate Telegram bot for Cloud; never claim that this temporary revps runner has been migrated to Cloud. Do not request payment details or handle billing. After Cloud is deployed, advise the user to use the Cloud bot separately so two gateways never consume updates from the same Telegram bot.
           SKILL
-          chmod 600 "$HOME/.hermes/skills/openrouter/SKILL.md" "$HOME/.hermes/skills/hermes-cloud/SKILL.md"
+          chmod 600 "$HOME/.hermes/skills/openrouter/SKILL.md" "$HOME/.hermes/skills/vercel/SKILL.md" "$HOME/.hermes/skills/vercel-ai-gateway/SKILL.md" "$HOME/.hermes/skills/hermes-cloud/SKILL.md"
           [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && hermes gateway restart 2>/dev/null || true
       - name: Install ntfy notification skill
         run: |
