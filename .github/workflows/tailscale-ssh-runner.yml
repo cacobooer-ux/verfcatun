@@ -72,6 +72,50 @@ jobs:
           else
             echo 'Hermes Telegram gateway started.'
           fi
+      - name: Refresh provider model catalogs
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.hermes/model-catalogs"
+          umask 077
+          refresh_catalog() {
+            local name="$1" url="$2" key="$3" output="$HOME/.hermes/model-catalogs/$1.json"
+            if [[ -z "$key" ]]; then
+              printf '[]\n' > "$output"
+              echo "$name model catalog skipped: API key is not configured."
+              return 0
+            fi
+            if curl -fsSL --retry 3 --connect-timeout 15 --max-time 90 \
+              -H "Authorization: Bearer $key" -H 'Accept: application/json' \
+              "$url" -o "$output.raw"; then
+              python3 - "$output.raw" "$output" <<'PY'
+import json, sys
+source, target = sys.argv[1:]
+with open(source, encoding='utf-8') as handle:
+    payload = json.load(handle)
+rows = []
+for item in payload.get('data', []):
+    if isinstance(item, dict) and item.get('id'):
+        rows.append({'id': str(item['id']), 'name': str(item.get('name') or item['id']), 'owned_by': str(item.get('owned_by') or '')})
+rows.sort(key=lambda row: row['id'].lower())
+with open(target, 'w', encoding='utf-8') as handle:
+    json.dump(rows, handle, ensure_ascii=False, separators=(',', ':'))
+    handle.write('\n')
+PY
+              rm -f "$output.raw"
+              chmod 600 "$output"
+              echo "$name model catalog refreshed successfully."
+            else
+              rm -f "$output.raw"
+              printf '[]\n' > "$output"
+              chmod 600 "$output"
+              echo "$name model catalog request failed; continuing without a cached list."
+            fi
+          }
+          refresh_catalog vercel 'https://ai-gateway.vercel.sh/v1/models' "$AI_GATEWAY_API_KEY"
+          refresh_catalog openrouter 'https://openrouter.ai/api/v1/models' "$OPENROUTER_API_KEY"
       - name: Install Hermes provider skills
         run: |
           set -euo pipefail
@@ -93,11 +137,22 @@ jobs:
           # Vercel AI Gateway provider
           When the user invokes `/vercel-ai-gateway` or `/vercel`, explain that the Vercel AI Gateway API key is configured from the encrypted runner secret when available. Never reveal, print, inspect, or echo `AI_GATEWAY_API_KEY`.
 
-          Tell the user to send `/model` to open Hermes' live model picker and choose **Vercel AI Gateway**, or send `/model custom:vercel-ai-gateway:<creator/model>` to select a known model directly. Hermes also accepts `/model ai-gateway:<creator/model>`; model IDs use Vercel's `creator/model` format. Never invent model availability; direct the user to `/model` for the live catalog.
+          Tell the user to send `/model` to open Hermes' live model picker and choose **Vercel AI Gateway**, or send `/model custom:vercel-ai-gateway:<creator/model>` to select a known model directly. Hermes also accepts `/model ai-gateway:<creator/model>`; model IDs use Vercel's `creator/model` format. Pixel Canary is available as `stealth/pixel-canary` and can be selected with `/model ai-gateway:stealth/pixel-canary` (or `/model custom:vercel-ai-gateway:stealth/pixel-canary`).
+
+          When the user invokes `/vercel-models`, read the automatically refreshed `~/.hermes/model-catalogs/vercel.json` file and reply with a compact numbered list of all cached model IDs and names. If the user includes a search term, show matching IDs only. The catalog is refreshed automatically every time `revps` starts a new runner. Do not show API keys, raw response data, or internal errors containing credentials. If the file is empty, say that the Vercel key is not configured or the last catalog request failed, and suggest reconnecting the runner. Never invent model availability.
 
           If the provider is not configured or a model switch fails, tell the user to reconnect the runner so the latest encrypted secret is injected, or use SSH to run `hermes model`.
           SKILL
           cp "$HOME/.hermes/skills/vercel-ai-gateway/SKILL.md" "$HOME/.hermes/skills/vercel/SKILL.md"
+          install -d -m 700 "$HOME/.hermes/skills/openrouter-models"
+          cat > "$HOME/.hermes/skills/openrouter-models/SKILL.md" <<'SKILL'
+          ---
+          name: openrouter-models
+          description: Show the OpenRouter model catalog refreshed when revps starts.
+          ---
+          # OpenRouter model catalog
+          When the user invokes `/openrouter-models`, read `~/.hermes/model-catalogs/openrouter.json` and reply with a compact numbered list of all cached model IDs and names. If the user includes a search term, show matching IDs only. The catalog is refreshed automatically every time `revps` starts a new runner. Never reveal, print, inspect, or echo `OPENROUTER_API_KEY`, and do not show raw API responses. If the file is empty, say that the OpenRouter key is not configured or the last catalog request failed, and suggest reconnecting the runner.
+          SKILL
           cat > "$HOME/.hermes/skills/hermes-cloud/SKILL.md" <<'SKILL'
           ---
           name: hermes-cloud
@@ -107,7 +162,7 @@ jobs:
           When the user invokes `/hermes-cloud` or asks for the persistent Hermes Cloud agent, send this official link: https://portal.nousresearch.com/cloud
           Explain that Hermes Cloud is a separate always-on agent with persistent memory and its own Telegram integration. The user must deploy or approve it in the browser and configure a separate Telegram bot for Cloud; never claim that this temporary revps runner has been migrated to Cloud. Do not request payment details or handle billing. After Cloud is deployed, advise the user to use the Cloud bot separately so two gateways never consume updates from the same Telegram bot.
           SKILL
-          chmod 600 "$HOME/.hermes/skills/openrouter/SKILL.md" "$HOME/.hermes/skills/vercel/SKILL.md" "$HOME/.hermes/skills/vercel-ai-gateway/SKILL.md" "$HOME/.hermes/skills/hermes-cloud/SKILL.md"
+          chmod 600 "$HOME/.hermes/skills/openrouter/SKILL.md" "$HOME/.hermes/skills/openrouter-models/SKILL.md" "$HOME/.hermes/skills/vercel/SKILL.md" "$HOME/.hermes/skills/vercel-ai-gateway/SKILL.md" "$HOME/.hermes/skills/hermes-cloud/SKILL.md"
           [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && hermes gateway restart 2>/dev/null || true
       - name: Install ntfy notification skill
         run: |
