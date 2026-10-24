@@ -1,0 +1,80 @@
+name: Windows RDP Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      launch:
+        description: 'Start the runner'
+        required: false
+        default: 'yes'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Configure RDP user and enable Remote Desktop
+        shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:RDP_PASSWORD)) {
+            Write-Error "RDP_PASSWORD secret is not set."
+          }
+          $pass = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
+          New-LocalUser -Name "rdpuser" -Password $pass -PasswordNeverExpires $true -Description "RDP runner user" -ErrorAction SilentlyContinue
+          try { Add-LocalGroupMember -Group "Administrators" -Member "rdpuser" } catch { Write-Host $_.Exception.Message }
+          try { Add-LocalGroupMember -Group "Remote Desktop Users" -Member "rdpuser" } catch { Write-Host $_.Exception.Message }
+          # Enable Remote Desktop and allow connections without NLA (for non-domain clients)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+          New-NetFirewallRule -DisplayName "RDP 3389" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue
+          Write-Host "RDP user ready."
+      - name: Install Tailscale
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ts = "$env:RUNNER_TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile $ts
+          Start-Process -FilePath $ts -ArgumentList "/quiet" -Wait
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" version
+      - name: Connect to Tailscale
+        shell: pwsh
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
+          & $ts up --authkey="$env:TAILSCALE_AUTH_KEY" --hostname="gh-win-rdp-$($env:GITHUB_RUN_ID)"
+          $ip = (& $ts ip -4 | Select-Object -First 1)
+          "TAILSCALE_IP=$ip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "========================================"
+          Write-Host "TAILSCALE_IP=$ip"
+          Write-Host "RDP: rdpuser@$ip  (port 3389)"
+          Write-Host "========================================"
+      - name: Publish runner connection status
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $status = "RUN_ID=$($env:GITHUB_RUN_ID)`nTAILSCALE_IP=$($env:TAILSCALE_IP)`nRDP_USER=rdpuser`nRDP_COMMAND=mstsc /v:$($env:TAILSCALE_IP)`nSTATUS=ready`n"
+          $content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($status))
+          $body = @{ message = "Publish RDP runner status"; content = $content } | ConvertTo-Json
+          Invoke-RestMethod -Method Put `
+            -Uri "https://api.github.com/repos/$($env:GITHUB_REPOSITORY)/contents/.github/runner-status/$($env:GITHUB_RUN_ID)-rdp.txt" `
+            -Headers @{ Authorization = "Bearer $($env:GH_TOKEN)"; Accept = "application/vnd.github+json" } `
+            -Body $body | Out-Null
+          Write-Host "Status published."
+      - name: Keep RDP runner alive
+        shell: pwsh
+        run: |
+          while ($true) {
+            Write-Host "[$(Get-Date -Format o)] RDP runner alive at $($env:TAILSCALE_IP)"
+            Start-Sleep -Seconds 300
+          }
