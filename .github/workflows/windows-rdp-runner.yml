@@ -26,7 +26,9 @@ jobs:
             Write-Error "RDP_PASSWORD secret is not set."
           }
           $pass = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
-          New-LocalUser -Name "rdpuser" -Password $pass -PasswordNeverExpires $true -Description "RDP runner user" -ErrorAction SilentlyContinue
+          New-LocalUser -Name "rdpuser" -Password $pass -ErrorAction SilentlyContinue
+          Set-LocalUser -Name "rdpuser" -PasswordNeverExpires $true
+          Set-LocalUser -Name "rdpuser" -Description "RDP runner user"
           try { Add-LocalGroupMember -Group "Administrators" -Member "rdpuser" } catch { Write-Host $_.Exception.Message }
           try { Add-LocalGroupMember -Group "Remote Desktop Users" -Member "rdpuser" } catch { Write-Host $_.Exception.Message }
           # Enable Remote Desktop and allow connections without NLA (for non-domain clients)
